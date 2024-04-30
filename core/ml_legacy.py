@@ -1,6 +1,7 @@
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
 from sklearn.neighbors import KNeighborsClassifier
+from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.metrics import accuracy_score
 from sklearn.metrics import confusion_matrix
 from sklearn.metrics import f1_score
@@ -64,6 +65,9 @@ def mll_train_knn(x_train: np.ndarray, y_train: np.ndarray, x_test: np.ndarray =
     y_pr =  model.predict(x_test)
     return y_pr
 
+def mll_train_boosting(x_train: np.ndarray, y_train: np.ndarray, x_test: np.ndarray = None):
+    model = GradientBoostingClassifier(n_estimators=100, learning_rate=0.1, max_depth=3, random_state=42)
+    return
 
 def mll_eval_test(y_gt: np.array, y_pr: np.array) -> tuple:
     """
@@ -78,6 +82,32 @@ def mll_eval_test(y_gt: np.array, y_pr: np.array) -> tuple:
     stat_fscore_l = f1_score(y_gt, y_pr, average=None)
 
     return stat_cnf, stat_accuracy, [stat_fscore, stat_fscore_l]
+
+
+def plot_pca_3d(features, labels):
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection="3d")
+
+    scatter = ax.scatter(features[:, 0], features[:, 1], features[:, 2], c=labels, cmap="viridis")
+
+    ax.set_xlabel("pca_f_1")
+    ax.set_ylabel("pca_f_2")
+    ax.set_zlabel("pca_f_3")
+    ax.set_title("3D PCA Plot")
+
+    legend = fig.colorbar(scatter, ax=ax, orientation="vertical", shrink=0.5)
+    legend.set_label("labels")
+
+    plt.show()
+
+def plot_pca_2d(features, labels):
+    plt.figure(figsize=(8, 6))
+    scatter = plt.scatter(features[:, 0], features[:, 1], c=labels, cmap='viridis', edgecolor='k', alpha=0.7)
+    plt.xlabel('Principal Component 1')
+    plt.ylabel('Principal Component 2')
+    plt.title('2D PCA Plot')
+    plt.colorbar(scatter)
+    plt.show()
 
 def save_confusion_matrix(cnf_matrix, path_image):
     plt.figure(figsize=(10, 7))

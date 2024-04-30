@@ -1,18 +1,19 @@
+import pandas as pd
 import numpy as np
 from sklearn.preprocessing import StandardScaler
 from sklearn.preprocessing import MinMaxScaler
 
-from ds_base import  AbstractDataset
+from .ds_base import  AbstractDataset
 
 class TabularDataset(AbstractDataset):
 
-
-    FEATURE_UNUSED = -1
+    # ---- Feature conversion
     FEATURE_FLOAT = 0
     FEATURE_INT = 1
     FEATURE_CATEGORICAL = 2
     FEATURE_BOOLEAN = 3
 
+    # ---- Label conversion
     LABEL_TYPE_DIRECT = 0
     LABLE_TYPE_ONEHOT = 1
 
@@ -22,111 +23,116 @@ class TabularDataset(AbstractDataset):
     SCALER_STANDARD = 0
     SCALER_MINMAX = 1
 
+    NAN2DATA_MIN = 0
+    NAN2DATA_MAX = 1
+    NAN2DATA_DISTRIBUTION = 2
+    NAN2DATA_ZERO = 3
+
     def __init__(self):
         super(TabularDataset, self).__init__()
-        self.header = None
-        self.categories = {}
-        self.samples_origin = []
 
-    def load_from_csv(self, path_csv: str, delimiter: str = ",", value_types: list = None,
-                      label_index: int = -1, label_type: int = LABEL_TYPE_DIRECT,
-                      label_max_value: int = 1, label_min_value: int = 0, is_skip_nan: bool = True):
+        # ---- Column names
+        self.tbl_column_names = []
+        self.tbl_label_name = None
+        # ---- Column types as defined by this class
+        self.tbl_column_types = {}
+        # ---- Table of col_name -> {category: count} for original data
+        self.tbl_column_categories_og = {}
+        self.tbl_column_categories = {}
+        self.tbl_category_encoder = {}
+        # ---- Table of label -> count
+        self.tbl_label_categories = None
 
-        input_vectors_total = 0
-        input_vectors_skipped = 0
 
-        f = open(path_csv, "r")
-        header = f.readline()
-        self.header = header.strip().split(delimiter)
 
-        if label_index == -1:
-            label_index = len(self.header) - 1
-        if value_types is None:
-            value_types = [self.FEATURE_FLOAT] * len(self.header)
+    def _nan2data_distribution(self, df: pd.DataFrame, column_name: str) -> pd.DataFrame:
+        distribution = df[column_name].value_counts(normalize=True)
+        new_val = np.random.choice(distribution.index, size=df[column_name].isna().sum(), p=distribution.values)
+        df.loc[df[df[column_name].isna()].index, column_name] = new_val
+        return df
 
-        for line in f:
-            input_vectors_total += 1
-            is_skip_vector = False
-            shards = line.strip().split(delimiter)
-            fv = []
+    def _nan2data_min(self, df: pd.DataFrame, column_name: str) -> pd.DataFrame:
+        if self.tbl_column_types in [self.FEATURE_CATEGORICAL, self.FEATURE_BOOLEAN]:
+            values = dict(df[column_name].value_counts())
+            new_val = min(values, key=values.get)
+        else:
+            new_val = min(df[column_name])
+        df.loc[df[df[column_name].isna()].index, column_name] = new_val
+        return df
 
-            counter = 0
-            for i in range(0, len(shards)):
-                feature_name = self.header[i]
-                feature_value = shards[i]
-                feature_type = value_types[i]
+    def _nan2data_max(self, df: pd.DataFrame, column_name: str) -> pd.DataFrame:
+        if self.tbl_column_types in [self.FEATURE_CATEGORICAL, self.FEATURE_BOOLEAN]:
+            values = dict(df[column_name].value_counts())
+            new_val = max(values, key=values.get)
+        else:
+            new_val = max(df[column_name])
+        df.loc[df[df[column_name].isna()].index, column_name] = new_val
+        return df
 
-                # ----------------------------------------
-                if feature_type == self.FEATURE_FLOAT:
-                    feature_value_new = self._convert_str2float(feature_name, feature_value)
-                    if feature_value_new is None:
-                        if is_skip_nan:
-                            is_skip_vector = True
-                            break
-                        else:
-                            feature_value_new = 0
-                    fv.append(feature_value_new)
-                # ----------------------------------------
-                elif feature_type == self.FEATURE_INT:
-                    feature_value_new = self._convert_str2int(feature_name, feature_value)
-                    if feature_value_new is None:
-                        if is_skip_nan:
-                            is_skip_vector = True
-                            break
-                        else:
-                            feature_value_new = 0
-                    fv.append(feature_value_new)
-                # ----------------------------------------
-                elif feature_type == self.FEATURE_BOOLEAN:
-                    feature_value_new = self._convert_str2boolean(feature_name, feature_value)
-                    if feature_value_new is None:
-                        if is_skip_nan:
-                            is_skip_vector = True
-                            break
-                        else:
-                            feature_value_new = 0
-                    fv.append(feature_value_new)
-                # ----------------------------------------
-                elif feature_type == self.FEATURE_CATEGORICAL:
-                    feature_value_new = self._convert_str2categorical(feature_name, feature_value)
-                    if feature_value_new is None:
-                        if is_skip_nan:
-                            is_skip_vector = True
-                            break
-                        else:
-                            feature_value_new = 0
-                    fv.append(feature_value_new)
-                else:
-                    if i < label_index:
-                        counter += 1
+    def _nan2data_zero(self, df: pd.DataFrame, column_name: str) -> pd.DataFrame:
+        df.loc[df[df[column_name].isna()].index, column_name] = 0
+        return df
 
-            if is_skip_vector:
-                input_vectors_skipped += 1
-                continue
+    def load_from_csv(self, path_csv: str, col_name_label: str, col_names_cvrt: dict = None, col_names_policy: dict = None):
+        df = pd.read_csv(path_csv)
 
-            label_index_up = label_index - counter
-            label = fv.pop(label_index_up)
+        # ---- Load and extract categories, set types
+        for column_name in col_names_cvrt:
+            self.tbl_column_names.append(column_name)
+            self.tbl_column_types[column_name]  = col_names_cvrt[column_name]
+            if col_names_cvrt[column_name] in [self.FEATURE_CATEGORICAL, self.FEATURE_BOOLEAN]:
+                self.tbl_column_categories_og[column_name] = dict(df[column_name].value_counts())
 
-            sample = {}
+        self.tbl_label_name = col_name_label
+        self.tbl_label_categories = dict(df[col_name_label].value_counts())
 
-            if label_type == self.LABEL_TYPE_DIRECT:
-                sample[self.KEY_FEATURES] = fv
-                sample[self.KEY_LABEL] = label
-            elif label_type == self.LABLE_TYPE_ONEHOT:
-                dim = label_max_value - label_min_value
-                label_norm = label - label_min_value
-                label_norm = self._convert_int2onehot(label_norm, dim)
+        # ---- Handle missing values according to given policies
+        for column_name in col_names_cvrt:
 
-                sample[self.KEY_FEATURES] = fv
-                sample[self.KEY_LABEL] = label_norm
+            # ----------------------------------------
+            if col_names_cvrt[column_name] in [self.FEATURE_CATEGORICAL, self.FEATURE_BOOLEAN]:
+                policy = col_names_policy[column_name]
+                if policy == self.NAN2DATA_DISTRIBUTION:
+                    df = self._nan2data_distribution(df, column_name)
+                elif policy == self.NAN2DATA_MIN:
+                    df = self._nan2data_min(df, column_name)
+                elif policy == self.NAN2DATA_MAX:
+                    df = self._nan2data_max(df, column_name)
+                self.tbl_column_categories[column_name] = dict(df[column_name].value_counts())
 
-            self.samples_table.append(sample)
-            self.samples_origin.append(shards)
+            # ----------------------------------------
+            if  col_names_cvrt[column_name] in [self.FEATURE_INT, self.FEATURE_FLOAT]:
+                policy = col_names_policy[column_name]
 
-        f.close()
+                if policy == self.NAN2DATA_DISTRIBUTION:
+                    df = self._nan2data_distribution(df, column_name)
+                elif policy == self.NAN2DATA_MIN:
+                    df = self._nan2data_min(df, column_name)
+                elif policy == self.NAN2DATA_MAX:
+                    df = self._nan2data_max(df, column_name)
+                elif policy == self.NAN2DATA_ZERO:
+                    df = self._nan2data_zero(df, column_name)
 
-        return (input_vectors_total, input_vectors_skipped)
+        # ---- Compute some extra statistics
 
+
+
+
+        # ---- Convert the dataset
+
+
+
+    def get_eda_info(self):
+        output = {
+            "column_names": self.tbl_column_names,
+            "label_name": self.tbl_label_name,
+            "column_types": self.tbl_column_types,
+            "column_categories_og": self.tbl_column_categories_og,
+            "column_categories_up": self.tbl_column_categories,
+            "label_categories": self.tbl_label_categories
+        }
+
+        return output
 
     def scale_feature_vectors(self, scaler_type: int = SCALER_STANDARD):
         if scaler_type == self.SCALER_STANDARD:
@@ -177,12 +183,12 @@ class TabularDataset(AbstractDataset):
 
     def _convert_str2categorical(self, name: str, value: any) -> int:
         if len(value) == 0: return -1
-        if name not in self.categories:
-            self.categories[name] = []
-        if value not in self.categories[name]:
-            self.categories[name].append(value)
+        if name not in self.category_table:
+            self.category_table[name] = []
+        if value not in self.category_table[name]:
+            self.category_table[name].append(value)
 
-        index = self.categories[name].index(value)
+        index = self.category_table[name].index(value)
         return index
 
     def _convert_int2onehot(self, label: int, max_dim: int) -> list:
