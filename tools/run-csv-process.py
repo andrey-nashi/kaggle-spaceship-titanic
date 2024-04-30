@@ -1,7 +1,4 @@
-
-
-
-def run(path_csv_in, path_csv_out, header_out):
+def run(path_csv_in, path_csv_out, header_out, extra: tuple = None):
     f_in = open(path_csv_in, "r")
     f_out = open(path_csv_out, "w")
 
@@ -38,6 +35,9 @@ def run(path_csv_in, path_csv_out, header_out):
             else:
                 feature_vector.append(value)
 
+        if extra is not None:
+            feature_vector += extra
+
         f_out.write(",".join(feature_vector) + "\n")
 
     f_in.close()
@@ -45,8 +45,8 @@ def run(path_csv_in, path_csv_out, header_out):
 
 
 
-path_in = "../data/train.csv"
-path_out = "../data/train-clean.csv"
+path_train_in = "../data/train.csv"
+path_train_out = "../data/train-clean.csv"
 header_out = [
     "PassengerId",
     "HomePlanet",
@@ -66,4 +66,8 @@ header_out = [
     "Surname",
     "Transported"
 ]
-run(path_in, path_out, header_out)
+
+path_test_in = "../data/test.csv"
+path_test_out = "../data/test-clean.csv"
+
+run(path_test_in, path_test_out, header_out, extra=["False"])

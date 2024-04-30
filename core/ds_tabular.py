@@ -1,11 +1,8 @@
-
-
 import numpy as np
 from sklearn.preprocessing import StandardScaler
 from sklearn.preprocessing import MinMaxScaler
 
 from ds_base import  AbstractDataset
-
 
 class TabularDataset(AbstractDataset):
 
@@ -29,10 +26,14 @@ class TabularDataset(AbstractDataset):
         super(TabularDataset, self).__init__()
         self.header = None
         self.categories = {}
+        self.samples_origin = []
 
     def load_from_csv(self, path_csv: str, delimiter: str = ",", value_types: list = None,
                       label_index: int = -1, label_type: int = LABEL_TYPE_DIRECT,
-                      label_max_value: int = 1, label_min_value: int = 0):
+                      label_max_value: int = 1, label_min_value: int = 0, is_skip_nan: bool = True):
+
+        input_vectors_total = 0
+        input_vectors_skipped = 0
 
         f = open(path_csv, "r")
         header = f.readline()
@@ -44,8 +45,9 @@ class TabularDataset(AbstractDataset):
             value_types = [self.FEATURE_FLOAT] * len(self.header)
 
         for line in f:
+            input_vectors_total += 1
+            is_skip_vector = False
             shards = line.strip().split(delimiter)
-
             fv = []
 
             counter = 0
@@ -54,21 +56,53 @@ class TabularDataset(AbstractDataset):
                 feature_value = shards[i]
                 feature_type = value_types[i]
 
+                # ----------------------------------------
                 if feature_type == self.FEATURE_FLOAT:
                     feature_value_new = self._convert_str2float(feature_name, feature_value)
+                    if feature_value_new is None:
+                        if is_skip_nan:
+                            is_skip_vector = True
+                            break
+                        else:
+                            feature_value_new = 0
                     fv.append(feature_value_new)
+                # ----------------------------------------
                 elif feature_type == self.FEATURE_INT:
                     feature_value_new = self._convert_str2int(feature_name, feature_value)
+                    if feature_value_new is None:
+                        if is_skip_nan:
+                            is_skip_vector = True
+                            break
+                        else:
+                            feature_value_new = 0
                     fv.append(feature_value_new)
+                # ----------------------------------------
                 elif feature_type == self.FEATURE_BOOLEAN:
                     feature_value_new = self._convert_str2boolean(feature_name, feature_value)
+                    if feature_value_new is None:
+                        if is_skip_nan:
+                            is_skip_vector = True
+                            break
+                        else:
+                            feature_value_new = 0
                     fv.append(feature_value_new)
+                # ----------------------------------------
                 elif feature_type == self.FEATURE_CATEGORICAL:
                     feature_value_new = self._convert_str2categorical(feature_name, feature_value)
+                    if feature_value_new is None:
+                        if is_skip_nan:
+                            is_skip_vector = True
+                            break
+                        else:
+                            feature_value_new = 0
                     fv.append(feature_value_new)
                 else:
                     if i < label_index:
                         counter += 1
+
+            if is_skip_vector:
+                input_vectors_skipped += 1
+                continue
 
             label_index_up = label_index - counter
             label = fv.pop(label_index_up)
@@ -86,10 +120,12 @@ class TabularDataset(AbstractDataset):
                 sample[self.KEY_FEATURES] = fv
                 sample[self.KEY_LABEL] = label_norm
 
-            print(sample)
             self.samples_table.append(sample)
+            self.samples_origin.append(shards)
 
         f.close()
+
+        return (input_vectors_total, input_vectors_skipped)
 
 
     def scale_feature_vectors(self, scaler_type: int = SCALER_STANDARD):
@@ -107,17 +143,33 @@ class TabularDataset(AbstractDataset):
         for i in range(0, len(self.samples_table)):
             self.samples_table[i][self.KEY_FEATURES] = temp_features[i].tolist()
 
+    def get_all_features(self) -> np.ndarray:
+        output = []
+        for sample in self.samples_table:
+            output.append(sample[self.KEY_FEATURES])
+        return np.array(output)
+
+
+    def get_all_labels(self) -> np.ndarray:
+        output = []
+        for sample in self.samples_table:
+            output.append(sample[self.KEY_LABEL])
+        return np.array(output)
+
 
     def _convert_str2float(self, name: str, value: any) -> float:
-        if len(value) == 0: return -1
+        if len(value) == 0:
+            return None
         return float(value)
 
     def _convert_str2int(self, name: str, value: any) -> int:
-        if len(value) == 0: return -1
+        if len(value) == 0:
+            return None
         return int(float(value))
 
     def _convert_str2boolean(self, name: str, value: any) -> int:
-        if len(value) == 0: return -1
+        if len(value) == 0:
+            return None
         if value == "True" or value == "true":
             return 1
         else:
@@ -148,30 +200,6 @@ class TabularDataset(AbstractDataset):
 
         return feature_vector, label_vector
 
-
-
-d = TabularDataset()
-header_out = [
-    TabularDataset.FEATURE_UNUSED,
-    TabularDataset.FEATURE_CATEGORICAL,
-    TabularDataset.FEATURE_BOOLEAN,
-    TabularDataset.FEATURE_CATEGORICAL,
-    TabularDataset.FEATURE_INT,
-    TabularDataset.FEATURE_CATEGORICAL,
-    TabularDataset.FEATURE_CATEGORICAL,
-    TabularDataset.FEATURE_INT,
-    TabularDataset.FEATURE_BOOLEAN,
-    TabularDataset.FEATURE_INT,
-    TabularDataset.FEATURE_INT,
-    TabularDataset.FEATURE_INT,
-    TabularDataset.FEATURE_INT,
-    TabularDataset.FEATURE_INT,
-    TabularDataset.FEATURE_CATEGORICAL,
-    TabularDataset.FEATURE_CATEGORICAL,
-    TabularDataset.FEATURE_BOOLEAN,
-]
-d.load_from_csv("../data/train-clean.csv", value_types=header_out)
-
-print(d.__getitem__(6))
-d.scale_feature_vectors()
-print(d.__getitem__(6))
+    def get_item_og(self, sample_index: int):
+        output = self.samples_origin[sample_index]
+        return output
