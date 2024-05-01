@@ -56,12 +56,12 @@ def plot_feature_label_distribution(data: dict, feature_name: str = "Feature", p
     else: plt.show()
 
 def plot_feature_histogram(data, feature_name: str = "Feature", path_output: str = None):
-    categories = list(data.keys())
+    categories = [str(i) for i in range(len(data))]
     values = list(data.values())
 
-    # Create a bar chart
     plt.figure(figsize=(8, 5))
     plt.bar(categories, values, color='skyblue')
+    plt.legend(categories, list(data.keys()))
     plt.xlabel(feature_name)
     plt.ylabel("Count")
     plt.title(f"Histogram of {feature_name}")

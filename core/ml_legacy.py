@@ -2,6 +2,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.ensemble import GradientBoostingClassifier
+from sklearn.neural_network import MLPClassifier
 from sklearn.metrics import accuracy_score
 from sklearn.metrics import confusion_matrix
 from sklearn.metrics import f1_score
@@ -64,9 +65,22 @@ def mll_train_knn(x_train: np.ndarray, y_train: np.ndarray, x_test: np.ndarray =
     y_pr =  model.predict(x_test)
     return y_pr
 
-def mll_train_boosting(x_train: np.ndarray, y_train: np.ndarray, x_test: np.ndarray = None):
-    model = GradientBoostingClassifier(n_estimators=100, learning_rate=0.1, max_depth=3, random_state=42)
-    return
+def mll_train_boosting(x_train: np.ndarray, y_train: np.ndarray, x_test: np.ndarray = None, n_estimators=100, learning_rate=0.1, max_depth=3, random_state=42):
+    model = GradientBoostingClassifier(n_estimators=n_estimators, learning_rate=learning_rate, max_depth=max_depth, random_state=random_state)
+    model.fit(x_train, y_train)
+    if x_test is None:
+        return model
+    y_pr =  model.predict(x_test)
+    return y_pr
+
+def mll_train_mlp(x_train: np.ndarray, y_train: np.ndarray, x_test: np.ndarray = None, hidden_layer_sizes = (5, 2), alpha=1e-5, random_state = 1):
+    model = MLPClassifier(solver="sgd", alpha=alpha, hidden_layer_sizes=hidden_layer_sizes, random_state=random_state)
+    model.fit(x_train, y_train)
+    if x_test is None:
+        return model
+    y_pr =  model.predict(x_test)
+    return y_pr
+
 
 def mll_eval_test(y_gt: np.array, y_pr: np.array) -> tuple:
     """

@@ -23,6 +23,9 @@ class TabularDataset:
     SCALER_STANDARD = 0
     SCALER_MINMAX = 1
 
+    # ---- Encoding methods
+    ENCODE_DEFAULT = 0
+    ENCODE_ONE_HOT = 1
 
     def __init__(self):
         super(TabularDataset, self).__init__()
@@ -35,6 +38,10 @@ class TabularDataset:
         self.tbl_label_categories = None
 
         self.df = None
+
+        self.encoding_table = None
+        self.features = None
+        self.labels = None
 
     def _nan2data_distribution(self, df: pd.DataFrame, column_name: str) -> pd.DataFrame:
         distribution = df[column_name].value_counts(normalize=True)
@@ -116,6 +123,9 @@ class TabularDataset:
 
         return output
 
+    def get_table_size(self):
+        return int(self.df.shape[0])
+
     def get_feature_distribution(self, column_name: str):
         distribution = self.df[column_name].value_counts(normalize=True)
         distribution = dict(distribution)
@@ -176,7 +186,6 @@ class TabularDataset:
             return output
 
     def alter_nan2data(self, column_name: str, policy: int, arg: any = None):
-
         if policy == self.NAN2DATA_DISTRIBUTION:
             new_val = np.random.choice(list(arg.keys()), size=self.df[column_name].isna().sum(), p=list(arg.values()))
             self.df.loc[self.df[self.df[column_name].isna()].index, column_name] = new_val
@@ -185,6 +194,64 @@ class TabularDataset:
         else:
             self.df.loc[self.df[self.df[column_name].isna()].index, column_name] = 0
 
+    def alter_encode_table(self, encoding_table: dict = None):
+        #TODO implement one hot encoding here as well
+        if encoding_table is None:
+            encoding_table = {}
+            for col_name, col_type in self.tbl_col_types.items():
+                if col_type == self.FEATURE_CATEGORICAL:
+                    values = dict(self.df[col_name].value_counts())
+                    encoding = {v:i for i, v in enumerate(values)}
+                    encoding_table[col_name] = encoding
+                elif col_type == self.FEATURE_BOOLEAN:
+                    values = dict(self.df[col_name].astype(str).value_counts())
+                    encoding = {v:i for i, v in enumerate(values)}
+                    if "True" in encoding: encoding = {"True": 1, "False": 0}
+                    if "true" in encoding: encoding = {"true": 1, "false": 0}
+                    if "1" in encoding and "0" in encoding: {"0": 0, "1": 1}
+                    if "1" in encoding and "-1" in encoding: {"-1": 0, "1": 1}
+                    encoding_table[col_name] = encoding
+
+        self.features = []
+        self.labels = []
+
+
+        for col_name, col_type in self.tbl_col_types.items():
+            if col_type == self.FEATURE_CATEGORICAL:
+                col = self.df[col_name].to_frame()
+                col["encoded"] = col[col_name].replace(encoding_table[col_name])
+                col = np.array(col["encoded"])
+            elif col_type == self.FEATURE_BOOLEAN:
+                col = self.df[col_name].to_frame()
+                col = col.astype(str)
+                col["encoded"] = col[col_name].replace(encoding_table[col_name])
+                col = np.array(col["encoded"])
+            else:
+                col = np.array(self.df[col_name])
+
+
+            if col_name == self.tbl_col_name_label:
+                self.labels = col
+            else:
+                self.features.append(col)
+
+        self.features = np.column_stack(self.features)
+        return  encoding_table
+
+    def alter_scale_features(self, scaler: int = SCALER_STANDARD):
+        if self.features is None or self.labels is None:
+            raise RuntimeError("Encode with `alter_encode_table` first")
+
+        if isinstance(scaler, int):
+            if scaler == self.SCALER_STANDARD:
+                scaler = StandardScaler()
+            elif scaler == self.SCALER_MINMAX:
+                scaler = MinMaxScaler()
+            scaler.fit(np.array(self.features))
+
+        self.features = scaler.transform(np.array(self.features))
+
+        return scaler
 
 
 
@@ -194,31 +261,4 @@ class TabularDataset:
 
 
 
-    def alter_scale_features(self, scaler_type: int = SCALER_STANDARD):
-        if scaler_type == self.SCALER_STANDARD:
-            scaler = StandardScaler()
-        elif scaler_type == self.SCALER_MINMAX:
-            scaler = MinMaxScaler()
-        else:
-            return
 
-        temp_features = [f[self.KEY_FEATURES] for f in self.samples_table]
-        temp_features = np.array(temp_features)
-        temp_features = scaler.fit_transform(np.array(temp_features))
-
-        for i in range(0, len(self.samples_table)):
-            self.samples_table[i][self.KEY_FEATURES] = temp_features[i].tolist()
-
-
-
-
-
-    def __len__(self):
-        return len(self.samples_table)
-
-    def __getitem__(self, sample_index: int):
-        sample = self.samples_table[sample_index]
-        feature_vector = sample[self.KEY_FEATURES]
-        label_vector = sample[self.KEY_LABEL]
-
-        return feature_vector, label_vector

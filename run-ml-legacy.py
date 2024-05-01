@@ -1,11 +1,30 @@
-from sklearn.model_selection import train_test_split
-from tqdm import tqdm
+import argparse
 
 from core.ds_tabular import *
 from core.ml_legacy import *
-from core.ml_plotter import *
+
+METHOD_GBC = "gbc"
+METHOD_SVM = "svm"
+METHOD_RAF = "raf"
+METHOD_KNN = "knn"
+METHOD_MLP = "mlp"
+
+METHODS = [
+    METHOD_GBC,
+    METHOD_SVM,
+    METHOD_RAF,
+    METHOD_KNN,
+    METHOD_MLP
+]
+
+def parse_arguments():
+    parser = argparse.ArgumentParser(description="", formatter_class=argparse.RawTextHelpFormatter)
+    parser.add_argument("-m", type=str, help=f"method from {METHODS}", default=METHOD_GBC)
+    args = parser.parse_args()
+    return args.m
 
 if __name__ == '__main__':
+    method = parse_arguments()
 
     # -----------------------------------------
     path_train = "./data/train-clean.csv"
@@ -68,16 +87,32 @@ if __name__ == '__main__':
     for col_name, policy in col_types.items():
         if policy == TabularDataset.FEATURE_CATEGORICAL:
             output = dataset_train.compute_feature_label_distribution(col_name)
-            plot_feature_label_distribution(output, col_name, f"./data/cat_label_{col_name}.png")
-            print("---------------------")
-            print(col_name)
-            print(output)
+            #plot_feature_label_distribution(output, col_name, f"./data/cat_label_{col_name}.png")
 
 
+    encoding_table = dataset_train.alter_encode_table()
+    dataset_test.alter_encode_table(encoding_table)
+
+    scaler = dataset_train.alter_scale_features()
+    dataset_test.alter_scale_features(scaler)
 
 
+    if method == METHOD_GBC:
+        y_pr = mll_train_boosting(dataset_train.features, dataset_train.labels, dataset_test.features)
+    elif method == METHOD_SVM:
+        y_pr = mll_train_svm(dataset_train.features, dataset_train.labels, dataset_test.features, "rbf")
+    elif method == METHOD_RAF:
+        y_pr = mll_train_random_forest(dataset_train.features, dataset_train.labels, dataset_test.features)
+    elif method == METHOD_KNN:
+        y_pr = mll_train_knn(dataset_train.features, dataset_train.labels, dataset_test.features, 10)
+    elif method == METHOD_MLP:
+        y_pr = mll_train_mlp(dataset_train.features, dataset_train.labels, dataset_test.features, [16, 8])
 
-    #print(info_test)
-
-
+    f = open(f"./data/output-{method}.csv", "w")
+    f.write("PassengerId,Transported\n")
+    for i in range(0, y_pr.shape[0]):
+        id = dataset_test.df["PassengerId"][i]
+        label = "True" if y_pr[i] == 1 else "False"
+        f.write(str(id)+","+label+"\n")
+    f.close()
 

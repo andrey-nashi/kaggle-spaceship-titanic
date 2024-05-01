@@ -1,11 +1,16 @@
 # kaggle-spaceship-titanic
 Spaceship Titanic Kaggle competition
 
-----------------------------------------------------
-1. Place `train.csv`, `test.csv` to data
-2. Run `python3 run-csv-process.py` to generate CSV splitting cabin, passenger info and filling in missing labels for the test set
-3. 
+[Kaggle competition](https://www.kaggle.com/competitions/spaceship-titanic)
 
+----------------------------------------------------
+1. Place `train.csv`, `test.csv` to data directory
+2. Run `python3 run-csv-process.py` to generate new CSV files (`train-clean.csv`, `test-clean.csv`)
+   - Split cabin into 3 separate columns
+   - Split passenger info into surname and name
+   - Complete the test set with label column, the default value set to `False`
+3. Run `python3 run-ml-legacy.py -m <method_name>` to generate submission `./data/output-<method_name>.cs`.
+Supported methods: `gbc, mlp, knn, svm, raf`
 
 ----------------------------------------------------
 
@@ -24,7 +29,14 @@ the NAN value is set to zero
 | Destination    | ![img](./data/cat_label_Destination.png) |
 | Home planet    | ![img](./data/cat_label_HomePlanet.png)  |
 
-| Method | Result |
-|------------|----------|
-| Random forest | 0.77063 |
-| 
+----------------------------------------------------
+## Results
+
+| Method            | Result  |
+|-------------------|---------|
+| K-neighbors       | 0.78442 |
+| MLP               | 0.79307 |
+| Random forest     | 0.79541 |
+| SVM (rbf)         | 0.80196 |
+| Gradient boosting | 0.80336 |
+
