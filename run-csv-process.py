@@ -43,31 +43,31 @@ def run(path_csv_in, path_csv_out, header_out, extra: tuple = None):
     f_in.close()
     f_out.close()
 
+if __name__ == '__main__':
+    header_out = [
+        "PassengerId",
+        "HomePlanet",
+        "CryoSleep",
+        "Cabin-1",
+        "Cabin-2",
+        "Cabin-3",
+        "Destination",
+        "Age",
+        "VIP",
+        "RoomService",
+        "FoodCourt",
+        "ShoppingMall",
+        "Spa",
+        "VRDeck",
+        "Name",
+        "Surname",
+        "Transported"
+    ]
 
+    path_train_in = "../data/train.csv"
+    path_train_out = "../data/train-clean.csv"
+    run(path_train_in, path_train_out)
 
-path_train_in = "../data/train.csv"
-path_train_out = "../data/train-clean.csv"
-header_out = [
-    "PassengerId",
-    "HomePlanet",
-    "CryoSleep",
-    "Cabin-1",
-    "Cabin-2",
-    "Cabin-3",
-    "Destination",
-    "Age",
-    "VIP",
-    "RoomService",
-    "FoodCourt",
-    "ShoppingMall",
-    "Spa",
-    "VRDeck",
-    "Name",
-    "Surname",
-    "Transported"
-]
-
-path_test_in = "../data/test.csv"
-path_test_out = "../data/test-clean.csv"
-
-run(path_test_in, path_test_out, header_out, extra=["False"])
+    path_test_in = "../data/test.csv"
+    path_test_out = "../data/test-clean.csv"
+    run(path_test_in, path_test_out, header_out, extra=["False"])

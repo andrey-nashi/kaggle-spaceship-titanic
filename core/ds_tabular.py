@@ -3,47 +3,38 @@ import numpy as np
 from sklearn.preprocessing import StandardScaler
 from sklearn.preprocessing import MinMaxScaler
 
-from .ds_base import  AbstractDataset
 
-class TabularDataset(AbstractDataset):
 
-    # ---- Feature conversion
+class TabularDataset:
+
+    # ---- Feature types
     FEATURE_FLOAT = 0
     FEATURE_INT = 1
     FEATURE_CATEGORICAL = 2
     FEATURE_BOOLEAN = 3
 
-    # ---- Label conversion
-    LABEL_TYPE_DIRECT = 0
-    LABLE_TYPE_ONEHOT = 1
-
-    KEY_FEATURES = "features"
-    KEY_LABEL = "label"
-
-    SCALER_STANDARD = 0
-    SCALER_MINMAX = 1
-
+    # ---- Policies for handling NAN data
     NAN2DATA_MIN = 0
     NAN2DATA_MAX = 1
     NAN2DATA_DISTRIBUTION = 2
     NAN2DATA_ZERO = 3
 
+    # ---- Scaling methods
+    SCALER_STANDARD = 0
+    SCALER_MINMAX = 1
+
+
     def __init__(self):
         super(TabularDataset, self).__init__()
-
         # ---- Column names
-        self.tbl_column_names = []
-        self.tbl_label_name = None
+        self.tbl_col_name_features = []
+        self.tbl_col_name_label = None
         # ---- Column types as defined by this class
-        self.tbl_column_types = {}
-        # ---- Table of col_name -> {category: count} for original data
-        self.tbl_column_categories_og = {}
-        self.tbl_column_categories = {}
-        self.tbl_category_encoder = {}
+        self.tbl_col_types = {}
         # ---- Table of label -> count
         self.tbl_label_categories = None
 
-
+        self.df = None
 
     def _nan2data_distribution(self, df: pd.DataFrame, column_name: str) -> pd.DataFrame:
         distribution = df[column_name].value_counts(normalize=True)
@@ -52,7 +43,7 @@ class TabularDataset(AbstractDataset):
         return df
 
     def _nan2data_min(self, df: pd.DataFrame, column_name: str) -> pd.DataFrame:
-        if self.tbl_column_types in [self.FEATURE_CATEGORICAL, self.FEATURE_BOOLEAN]:
+        if self.tbl_col_types in [self.FEATURE_CATEGORICAL, self.FEATURE_BOOLEAN]:
             values = dict(df[column_name].value_counts())
             new_val = min(values, key=values.get)
         else:
@@ -61,7 +52,7 @@ class TabularDataset(AbstractDataset):
         return df
 
     def _nan2data_max(self, df: pd.DataFrame, column_name: str) -> pd.DataFrame:
-        if self.tbl_column_types in [self.FEATURE_CATEGORICAL, self.FEATURE_BOOLEAN]:
+        if self.tbl_col_types in [self.FEATURE_CATEGORICAL, self.FEATURE_BOOLEAN]:
             values = dict(df[column_name].value_counts())
             new_val = max(values, key=values.get)
         else:
@@ -73,68 +64,137 @@ class TabularDataset(AbstractDataset):
         df.loc[df[df[column_name].isna()].index, column_name] = 0
         return df
 
-    def load_from_csv(self, path_csv: str, col_name_label: str, col_names_cvrt: dict = None, col_names_policy: dict = None):
+    def _handle_nan(self, col_nan_policy: dict):
+        for column_name in col_nan_policy:
+
+            # ----------------------------------------
+            if self.tbl_col_types[column_name] in [self.FEATURE_CATEGORICAL, self.FEATURE_BOOLEAN]:
+                policy = col_nan_policy[column_name]
+                if policy == self.NAN2DATA_DISTRIBUTION:
+                    self.df = self._nan2data_distribution(self.df, column_name)
+                elif policy == self.NAN2DATA_MIN:
+                    self.df = self._nan2data_min(self.df, column_name)
+                elif policy == self.NAN2DATA_MAX:
+                    self.df = self._nan2data_max(self.df, column_name)
+
+            # ----------------------------------------
+            if  self.tbl_col_types[column_name] in [self.FEATURE_INT, self.FEATURE_FLOAT]:
+                policy = col_nan_policy[column_name]
+
+                if policy == self.NAN2DATA_DISTRIBUTION:
+                    self.df = self._nan2data_distribution(self.df, column_name)
+                elif policy == self.NAN2DATA_MIN:
+                    self.df = self._nan2data_min(self.df, column_name)
+                elif policy == self.NAN2DATA_MAX:
+                    self.df = self._nan2data_max(self.df, column_name)
+                elif policy == self.NAN2DATA_ZERO:
+                    self.df = self._nan2data_zero(self.df, column_name)
+
+    def load_from_csv(self, path_csv: str, col_name_label: str, col_types: dict, col_nan_policy: dict = None):
         df = pd.read_csv(path_csv)
 
         # ---- Load and extract categories, set types
-        for column_name in col_names_cvrt:
-            self.tbl_column_names.append(column_name)
-            self.tbl_column_types[column_name]  = col_names_cvrt[column_name]
-            if col_names_cvrt[column_name] in [self.FEATURE_CATEGORICAL, self.FEATURE_BOOLEAN]:
-                self.tbl_column_categories_og[column_name] = dict(df[column_name].value_counts())
+        for column_name in col_types:
+            self.tbl_col_name_features.append(column_name)
+            self.tbl_col_types[column_name]  = col_types[column_name]
 
-        self.tbl_label_name = col_name_label
+        self.tbl_col_name_label = col_name_label
         self.tbl_label_categories = dict(df[col_name_label].value_counts())
+        self.df = df
 
-        # ---- Handle missing values according to given policies
-        for column_name in col_names_cvrt:
+        if col_nan_policy is not None:
+            self._handle_nan(col_nan_policy)
 
-            # ----------------------------------------
-            if col_names_cvrt[column_name] in [self.FEATURE_CATEGORICAL, self.FEATURE_BOOLEAN]:
-                policy = col_names_policy[column_name]
-                if policy == self.NAN2DATA_DISTRIBUTION:
-                    df = self._nan2data_distribution(df, column_name)
-                elif policy == self.NAN2DATA_MIN:
-                    df = self._nan2data_min(df, column_name)
-                elif policy == self.NAN2DATA_MAX:
-                    df = self._nan2data_max(df, column_name)
-                self.tbl_column_categories[column_name] = dict(df[column_name].value_counts())
-
-            # ----------------------------------------
-            if  col_names_cvrt[column_name] in [self.FEATURE_INT, self.FEATURE_FLOAT]:
-                policy = col_names_policy[column_name]
-
-                if policy == self.NAN2DATA_DISTRIBUTION:
-                    df = self._nan2data_distribution(df, column_name)
-                elif policy == self.NAN2DATA_MIN:
-                    df = self._nan2data_min(df, column_name)
-                elif policy == self.NAN2DATA_MAX:
-                    df = self._nan2data_max(df, column_name)
-                elif policy == self.NAN2DATA_ZERO:
-                    df = self._nan2data_zero(df, column_name)
-
-        # ---- Compute some extra statistics
-
-
-
-
-        # ---- Convert the dataset
-
-
-
-    def get_eda_info(self):
+    def get_table_info(self):
         output = {
-            "column_names": self.tbl_column_names,
-            "label_name": self.tbl_label_name,
-            "column_types": self.tbl_column_types,
-            "column_categories_og": self.tbl_column_categories_og,
-            "column_categories_up": self.tbl_column_categories,
-            "label_categories": self.tbl_label_categories
+            "col_name_features": self.tbl_col_name_features,
+            "col_name_labels": self.tbl_col_name_label,
+            "column_types": self.tbl_col_types,
+            "labels": self.tbl_label_categories,
+            "total_count": int(self.df.shape[0])
         }
 
         return output
 
-    def scale_feature_vectors(self, scaler_type: int = SCALER_STANDARD):
+    def get_feature_distribution(self, column_name: str):
+        distribution = self.df[column_name].value_counts(normalize=True)
+        distribution = dict(distribution)
+        return distribution
+
+    def compute_feature_label_distribution(self, feature_col_name: str, is_normalize: bool = False):
+        """
+        For the given column, if it is of categorical/boolean type, for each individual
+        unique feature value and label combination count how many vectors are there
+        with this combination.
+        :param feature_col_name: name of the column
+        :return: dict (or None if not categorical)
+        dict[category_name][label] -> number of feature vectors
+        """
+        output = {}
+
+        feature_col_type = self.tbl_col_types[feature_col_name]
+        label_col_name = self.tbl_col_name_label
+        if feature_col_type not in [self.FEATURE_CATEGORICAL, self.FEATURE_BOOLEAN]:
+            return None
+
+        df = self.df
+
+        temp_table = df.groupby([feature_col_name, label_col_name])[label_col_name].size()
+        if is_normalize:
+            temp_norm = df.groupby([feature_col_name])[label_col_name].size()
+            temp_table = temp_table / temp_norm
+        temp_table = dict(temp_table)
+
+        for key in temp_table:
+            category = key[0]
+            label = key[1]
+            if category not in output:
+                output[category] = {}
+            output[category][label] = temp_table[key]
+
+        return output
+
+    def compute_feature_histogram(self, feature_col_name: str, bins=10):
+        """
+        Compute value/feature-vector count histogram for the given column
+        :param feature_col_name: name of the column
+        :param bins: number of bins if column is of FLOAT type
+        :return: dict[col_name] -> value
+        """
+        feature_col_type = self.tbl_col_types[feature_col_name]
+        if feature_col_type in [self.FEATURE_CATEGORICAL, self.FEATURE_BOOLEAN]:
+            return dict(self.df[feature_col_name].value_counts())
+        if feature_col_type == self.FEATURE_INT:
+            temp = dict(self.df[feature_col_name].value_counts())
+            output = {int(k):temp[k] for k in temp}
+            return output
+        if feature_col_type == self.FEATURE_FLOAT:
+            hist, bins = np.histogram(self.df[feature_col_name], bins=bins)
+            output = {}
+            for bin_value, hist_value in zip(bins, hist):
+                output[float(bin_value)] = hist_value
+            return output
+
+    def alter_nan2data(self, column_name: str, policy: int, arg: any = None):
+
+        if policy == self.NAN2DATA_DISTRIBUTION:
+            new_val = np.random.choice(list(arg.keys()), size=self.df[column_name].isna().sum(), p=list(arg.values()))
+            self.df.loc[self.df[self.df[column_name].isna()].index, column_name] = new_val
+        elif policy in [self.NAN2DATA_MIN, self.NAN2DATA_MAX]:
+            self.df.loc[self.df[self.df[column_name].isna()].index, column_name] = arg
+        else:
+            self.df.loc[self.df[self.df[column_name].isna()].index, column_name] = 0
+
+
+
+
+
+
+
+
+
+
+    def alter_scale_features(self, scaler_type: int = SCALER_STANDARD):
         if scaler_type == self.SCALER_STANDARD:
             scaler = StandardScaler()
         elif scaler_type == self.SCALER_MINMAX:
@@ -149,52 +209,9 @@ class TabularDataset(AbstractDataset):
         for i in range(0, len(self.samples_table)):
             self.samples_table[i][self.KEY_FEATURES] = temp_features[i].tolist()
 
-    def get_all_features(self) -> np.ndarray:
-        output = []
-        for sample in self.samples_table:
-            output.append(sample[self.KEY_FEATURES])
-        return np.array(output)
 
 
-    def get_all_labels(self) -> np.ndarray:
-        output = []
-        for sample in self.samples_table:
-            output.append(sample[self.KEY_LABEL])
-        return np.array(output)
 
-
-    def _convert_str2float(self, name: str, value: any) -> float:
-        if len(value) == 0:
-            return None
-        return float(value)
-
-    def _convert_str2int(self, name: str, value: any) -> int:
-        if len(value) == 0:
-            return None
-        return int(float(value))
-
-    def _convert_str2boolean(self, name: str, value: any) -> int:
-        if len(value) == 0:
-            return None
-        if value == "True" or value == "true":
-            return 1
-        else:
-            return 0
-
-    def _convert_str2categorical(self, name: str, value: any) -> int:
-        if len(value) == 0: return -1
-        if name not in self.category_table:
-            self.category_table[name] = []
-        if value not in self.category_table[name]:
-            self.category_table[name].append(value)
-
-        index = self.category_table[name].index(value)
-        return index
-
-    def _convert_int2onehot(self, label: int, max_dim: int) -> list:
-        x = [0] * max_dim
-        x[label] = 1
-        return x
 
     def __len__(self):
         return len(self.samples_table)
@@ -205,7 +222,3 @@ class TabularDataset(AbstractDataset):
         label_vector = sample[self.KEY_LABEL]
 
         return feature_vector, label_vector
-
-    def get_item_og(self, sample_index: int):
-        output = self.samples_origin[sample_index]
-        return output
